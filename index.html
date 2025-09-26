@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>🌟 COPA LA OREJONA 🌟</title>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+  <style>
+    body {
+      font-family: 'Arial Black', Arial, sans-serif;
+      background: radial-gradient(circle at top, #001848, #000);
+      color: #fff;
+      padding: 20px;
+      min-height: 100vh;
+    }
+    h2 { text-align: center; font-size: 32px; color: #ffd700; text-shadow: 2px 2px 5px #000; }
+    #tabs { text-align: center; margin-bottom: 20px; }
+    #tabs button { margin: 3px; padding: 10px 16px; cursor: pointer; border: none; background: #003366; color: #fff; border-radius: 20px; font-weight: bold; transition: 0.3s; }
+    #tabs button.active { background: #ffd700; color: #000; }
+    #tabs button:hover { background: #0055aa; }
+    #marcador { text-align: center; font-size: 22px; font-weight: bold; margin: 15px 0; color: #ffd700; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 20px; background: rgba(255, 255, 255, 0.1); border: 2px solid #ffd700; }
+    th, td { border: 1px solid #ffd700; text-align: center; padding: 6px; color: #fff; }
+    th { background: #003366; color: #ffd700; }
+    select, button { margin: 5px; padding: 6px 12px; font-size: 14px; border-radius: 6px; border: none; cursor: pointer; }
+    select { background: #001848; color: #ffd700; font-weight: bold; }
+    button { font-weight: bold; transition: 0.3s; }
+    .btn { margin: 1px; padding: 5px 8px; border: none; border-radius: 6px; cursor: pointer; }
+    .gol { background: #28a745; color: #fff; }
+    .amarilla { background: #ffc107; color: #000; }
+    .roja { background: #dc3545; color: #fff; }
+    .menos { background: #6c757d; color: #fff; }
+    .partido { display: none; }
+    .main-btn { background: #ffd700; color: #000; font-size: 16px; font-weight: bold; margin: 5px; padding: 8px 14px; border-radius: 20px; }
+    .main-btn:hover { background: #fff; color: #003366; }
+  </style>
+</head>
+<body>
+  <h2>🌟 COPA LA OREJONA 🌟</h2>
+
+  <div id="tabs"></div>
+  <div style="text-align:center;">
+    <button class="main-btn" onclick="exportarExcel()">📤 Exportar Excel</button>
+    <button class="main-btn" onclick="limpiarDatos()">🗑 Limpiar Datos</button>
+  </div>
+
+  <div id="ventanas"></div>
+
+<script>
+  const nombresEquipos = [
+    "GVSA Sport","Gitanos FC","Vaso Lleno","AFEF Perú","6 de Noviembre",
+    "América Sport","La Crítica","Fulbiteros de Palao","FOPCA Villareal","Pasión Futbol"
+  ];
+
+  const partidos = Array.from({ length: 5 }, (_, i) => ({
+    equipoA: "",
+    equipoB: "",
+    marcador: { A:0, B:0 },
+    jugadoresA: Array.from({ length: 24 }, () => ({ nombre:"", dni:"", goles:0, amarilla:0, rojaAcum:0, rojaDirecta:0 })),
+    jugadoresB: Array.from({ length: 24 }, () => ({ nombre:"", dni:"", goles:0, amarilla:0, rojaAcum:0, rojaDirecta:0 }))
+  }));
+
+  let partidoActual = 0;
+
+  // Crear pestañas
+  const tabs = document.getElementById("tabs");
+  partidos.forEach((_, i) => {
+    const btn = document.createElement("button");
+    btn.textContent = `Partido ${i+1}`;
+    btn.onclick = () => mostrarVentana(i);
+    if(i===0) btn.classList.add("active");
+    tabs.appendChild(btn);
+  });
+
+  // Crear contenedores de partidos
+  const ventanas = document.getElementById("ventanas");
+  partidos.forEach((_, i) => {
+    const div = document.createElement("div");
+    div.id = `partido-${i}`;
+    div.className = "partido";
+    ventanas.appendChild(div);
+  });
+
+  function mostrarVentana(i){
+    document.querySelectorAll(".partido").forEach((p, idx)=>{ p.style.display = (i===idx) ? "block" : "none"; });
+    document.querySelectorAll("#tabs button").forEach((b, idx)=>{ b.classList.toggle("active", i===idx); });
+    partidoActual = i;
+    mostrarPartido();
+  }
+
+  function actualizarMarcador(){
+    const p = partidos[partidoActual];
+    document.getElementById(`marcador-${partidoActual}`).innerText = 
+      `Marcador: ${p.equipoA || "Equipo A"} ${p.marcador.A} - ${p.marcador.B} ${p.equipoB || "Equipo B"}`;
+  }
+
+  function modificar(jugador, accion, equipo){
+    const p = partidos[partidoActual];
+    if(accion==="gol+"){ jugador.goles++; p.marcador[equipo]++; }
+    if(accion==="gol-"){ if(jugador.goles>0){ jugador.goles--; if(p.marcador[equipo]>0)p.marcador[equipo]--; } }
+    if(accion==="amarilla+"){ if(jugador.amarilla<2){ jugador.amarilla++; if(jugador.amarilla===2) jugador.rojaAcum=1; } }
+    if(accion==="amarilla-"){ if(jugador.amarilla>0){ jugador.amarilla--; if(jugador.amarilla<2) jugador.rojaAcum=0; } }
+    if(accion==="roja+"){ if(jugador.rojaDirecta<1) jugador.rojaDirecta=1; }
+    if(accion==="roja-"){ if(jugador.rojaDirecta>0) jugador.rojaDirecta=0; }
+    actualizarMarcador();
+    mostrarPartido();
+  }
+
+  // 🔥 Función que devuelve todos los equipos ya usados en otros partidos
+  function equiposUsados(exceptPartidoIdx){
+    const usados = [];
+    partidos.forEach((p, i)=>{
+      if(i !== exceptPartidoIdx){
+        if(p.equipoA) usados.push(p.equipoA);
+        if(p.equipoB) usados.push(p.equipoB);
+      }
+    });
+    return usados;
+  }
+
+  function mostrarPartido(){
+    const idx = partidoActual;
+    const p = partidos[idx];
+    const cont = document.getElementById(`partido-${idx}`);
+    cont.innerHTML = "";
+
+    const marcador = document.createElement("div");
+    marcador.id = `marcador-${idx}`;
+    marcador.style.fontWeight="bold";
+    cont.appendChild(marcador);
+
+    const usadosGlobal = equiposUsados(idx);
+
+    ["A","B"].forEach(side=>{
+      const eqNombre = side==="A"?p.equipoA:p.equipoB;
+
+      const selector = document.createElement("select");
+      selector.innerHTML = `<option value="">-- Selecciona equipo --</option>` +
+        nombresEquipos.map(e=>{
+          const ocupadoMismo = (side==="A"?p.equipoB:p.equipoA) === e;
+          const ocupadoGlobal = usadosGlobal.includes(e);
+          const deshabilitado = (ocupadoMismo || ocupadoGlobal) && e!==eqNombre;
+          return `<option value="${e}" ${e===eqNombre?'selected':''} ${deshabilitado?'disabled':''}>${e}</option>`;
+        }).join("");
+
+      selector.addEventListener("change",()=>{
+        if(side==="A") p.equipoA=selector.value;
+        else p.equipoB=selector.value;
+        mostrarPartido();
+      });
+      cont.appendChild(selector);
+
+      if(eqNombre){ 
+        const titulo = document.createElement("h3");
+        titulo.textContent = `${eqNombre} (Equipo ${side})`;
+        titulo.style.color = "#ffd700";
+        cont.appendChild(titulo);
+
+        const tabla = document.createElement("table");
+        tabla.innerHTML = `<thead><tr>
+          <th>Nombre</th><th>DNI</th><th>Goles</th><th>Amarilla</th>
+          <th>Roja Acum</th><th>Roja Directa</th><th>Acciones</th>
+        </tr></thead>`;
+        const tbody = document.createElement("tbody");
+
+        const jugadores = side==="A"?p.jugadoresA:p.jugadoresB;
+        jugadores.forEach(j=>{
+          const fila = document.createElement("tr");
+
+          const tdNombre=document.createElement("td");
+          const inputNombre=document.createElement("input");
+          inputNombre.type="text"; inputNombre.value=j.nombre;
+          inputNombre.addEventListener("input",()=>j.nombre=inputNombre.value);
+          tdNombre.appendChild(inputNombre);
+
+          const tdDni=document.createElement("td");
+          const inputDni=document.createElement("input");
+          inputDni.type="text"; inputDni.value=j.dni;
+          inputDni.addEventListener("input",()=>j.dni=inputDni.value);
+          tdDni.appendChild(inputDni);
+
+          const tdGoles=document.createElement("td"); tdGoles.textContent=j.goles;
+          const tdAmar=document.createElement("td"); tdAmar.textContent=j.amarilla;
+          const tdRojA=document.createElement("td"); tdRojA.textContent=j.rojaAcum;
+          const tdRojD=document.createElement("td"); tdRojD.textContent=j.rojaDirecta;
+
+          const tdAcciones=document.createElement("td");
+          const acciones=[
+            {txt:"+Gol",clase:"btn gol",acc:"gol+"},
+            {txt:"-Gol",clase:"btn menos",acc:"gol-"},
+            {txt:"+Amarilla",clase:"btn amarilla",acc:"amarilla+"},
+            {txt:"-Amarilla",clase:"btn menos",acc:"amarilla-"},
+            {txt:"+Roja",clase:"btn roja",acc:"roja+"},
+            {txt:"-Roja",clase:"btn menos",acc:"roja-"}
+          ];
+          acciones.forEach(a=>{
+            const b=document.createElement("button");
+            b.textContent=a.txt; b.className=a.clase;
+            b.onclick=()=>modificar(j,a.acc,side);
+            tdAcciones.appendChild(b);
+          });
+
+          fila.append(tdNombre,tdDni,tdGoles,tdAmar,tdRojA,tdRojD,tdAcciones);
+          tbody.appendChild(fila);
+        });
+
+        tabla.appendChild(tbody);
+        cont.appendChild(tabla);
+      }
+    });
+    actualizarMarcador();
+  }
+
+ // ✅ Limpiar estadísticas, nombres y DNIs, pero mantener equipos
+function limpiarDatos(){
+  const numPartido = partidoActual + 1;
+  const p = partidos[partidoActual];
+  const equipoA = p.equipoA || "Equipo A";
+  const equipoB = p.equipoB || "Equipo B";
+
+  if(confirm(`⚠️ ¿Seguro que quieres limpiar los datos del Partido ${numPartido}: ${equipoA} vs ${equipoB}?`)){
+    p.marcador.A=0; 
+    p.marcador.B=0;
+    [...p.jugadoresA,...p.jugadoresB].forEach(j=>{
+      j.nombre=""; 
+      j.dni="";
+      j.goles=0; 
+      j.amarilla=0; 
+      j.rojaAcum=0; 
+      j.rojaDirecta=0;
+    });
+    mostrarPartido();
+    alert(`✅ Los datos del Partido ${numPartido}: ${equipoA} vs ${equipoB} se limpiaron correctamente.`);
+  }
+}
+
+  function exportarExcel(){
+    const wb = XLSX.utils.book_new();
+    partidos.forEach((p, idx)=>{
+      const ws_data=[];
+      ["A","B"].forEach(side=>{
+        const eq = side==="A"?p.equipoA||`Equipo ${side}`:p.equipoB||`Equipo ${side}`;
+        ws_data.push([eq + ` (Equipo ${side})`]);
+        ws_data.push(["Nombre","DNI","Goles","Amarilla","Roja Acum","Roja Directa"]);
+        const jugadores = side==="A"?p.jugadoresA:p.jugadoresB;
+        jugadores.forEach(j=>{ ws_data.push([j.nombre,j.dni,j.goles,j.amarilla,j.rojaAcum,j.rojaDirecta]); });
+        ws_data.push([]); 
+      });
+      const ws = XLSX.utils.aoa_to_sheet(ws_data);
+      XLSX.utils.book_append_sheet(wb, ws, `Partido ${idx+1}`);
+    });
+    XLSX.writeFile(wb,"5_partidos.xlsx");
+  }
+
+  mostrarVentana(0);
+</script>
+</body>
+</html>
